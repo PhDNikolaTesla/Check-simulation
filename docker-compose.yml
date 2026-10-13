@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  mock-api:
+    build: ./mock-api
+    container_name: sim_custom_mock_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - sim-isolated-net
+    restart: unless-stopped
+
+networks:
+  sim-isolated-net:
+    driver: bridge
