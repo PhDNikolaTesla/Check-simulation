@@ -1,12 +1,34 @@
 import random
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
 
 app = FastAPI()
 
-# MITRE ATT&CK風のIDとキルチェーンフェーズを統合した高度脅威概念プール
+# システムの動作状態（初期状態は休止中）
+SYSTEM_STATE = {
+    "is_active": False,
+    "current_mode": "STANDBY"
+}
+
+# 設定されたパスキー（開発用初期値）
+UNLOCK_PASSKEY = "KAMAKURA-SOLITARY-ACTIVATE-2026"  # 起動キー
+LOCK_PASSKEY = "KAMAKURA-SOLITARY-STANDBY-2026"    # 休止キー
+
+# 量子・高度脅威概念プール
 WILD_CONCEPTS = [
+    {
+        "category": "量子技術・暗号", 
+        "concept": "ショアのアルゴリズムを用いた公開鍵暗号体系（RSA/ECC）の瞬時破綻とリプレイス遅延の悪用",
+        "mitre_id": "T1588.002",
+        "kill_chain_phase": "Resource Development / Cryptographic Compromise"
+    },
+    {
+        "category": "量子技術・通信", 
+        "concept": "量子もつれ・量子鍵配送（QKD）ネットワークへの巧妙な中間者（MITM）観測干渉バイパス",
+        "mitre_id": "T1557",
+        "kill_chain_phase": "Credential Access / Interception"
+    },
     {
         "category": "攻撃手法(TTPs)", 
         "concept": "Living-off-the-Land手法を用いた正規管理ツールへの偽装潜伏",
@@ -18,18 +40,6 @@ WILD_CONCEPTS = [
         "concept": "DNSトンネリングおよびステガノグラフィによる暗号化データ隠蔽抽出",
         "mitre_id": "T1048",
         "kill_chain_phase": "Exfiltration"
-    },
-    {
-        "category": "攻撃手法(TTPs)", 
-        "concept": "サプライチェーン依存関係を悪用した依存ライブラリへのバックドア汚染",
-        "mitre_id": "T1195",
-        "kill_chain_phase": "Initial Access"
-    },
-    {
-        "category": "物理・量子", 
-        "concept": "量子もつれ・量子鍵配送（QKD）ネットワークの観測干渉バイパス",
-        "mitre_id": "T1557",
-        "kill_chain_phase": "Credential Access / Interception"
     },
     {
         "category": "空間・生体", 
@@ -45,8 +55,8 @@ WILD_CONCEPTS = [
     }
 ]
 
-class PredictionRequest(BaseModel):
-    topic: str
+class AuthRequest(BaseModel):
+    passkey: str
 
 class SecuritySimRequest(BaseModel):
     target_system: str
@@ -54,36 +64,43 @@ class SecuritySimRequest(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"message": "Advanced Cyber Threat Simulation API is running successfully!"}
-
-@app.post("/predict")
-def predict_future(request: PredictionRequest):
-    topic = request.topic
     return {
-        "topic": topic,
-        "prediction_horizon": "2035年",
-        "thought_process": [
-            "1. 高度持続的脅威（APT）データベースおよびATT&CKベクトルのマッピング",
-            "2. 攻撃者の戦術・技術と異種インフラの構造的相関シミュレーション",
-            "3. 複合的ゼロデイ攻撃キルチェーンの確率的重み付け"
-        ],
-        "scenarios": [
-            f"{topic}を標的とした自律型エージェントによる多次元スキャンが検知されています。",
-            f"境界防御を迂回する内部潜伏に対し、ゼロトラストアーキテクチャの動的再構築が求められます。"
-        ],
-        "confidence_score": 0.88
+        "status": SYSTEM_STATE["current_mode"],
+        "is_active": SYSTEM_STATE["is_active"],
+        "message": "Security Simulation Application Backend Operating."
     }
 
+# パスキーによる起動（Active化）
+@app.post("/auth/unlock")
+def unlock_system(req: AuthRequest):
+    if req.passkey == UNLOCK_PASSKEY:
+        SYSTEM_STATE["is_active"] = True
+        SYSTEM_STATE["current_mode"] = "ACTIVE"
+        return {"status": "SUCCESS", "mode": "ACTIVE", "message": "システムが正常に起動しました。脅威シミュレーション機能が有効です。"}
+    raise HTTPException(status_code=401, detail="無効な起動パスキーです。")
+
+# パスキーによる休止（Standby化）
+@app.post("/auth/lock")
+def lock_system(req: AuthRequest):
+    if req.passkey == LOCK_PASSKEY:
+        SYSTEM_STATE["is_active"] = False
+        SYSTEM_STATE["current_mode"] = "STANDBY"
+        return {"status": "SUCCESS", "mode": "STANDBY", "message": "システムは休止状態に移行しました。コア機能はロックされました。"}
+    raise HTTPException(status_code=401, detail="無効な休止パスキーです。")
+
+# 脅威シミュレーション実行（Active時のみ稼働）
 @app.post("/simulate-threat")
 def simulate_threat(req: SecuritySimRequest):
+    if not SYSTEM_STATE["is_active"]:
+        raise HTTPException(status_code=403, detail="システムは休止状態（STANDBY）です。起動用パスキーを入力してください。")
+
     target = req.target_system
     count = max(1, min(req.cross_count, 3))
     chosen_threats = random.sample(WILD_CONCEPTS, count)
     
-    threat_indices = [round(random.uniform(0.88, 0.99), 2) for _ in range(count)]
+    threat_indices = [round(random.uniform(0.90, 0.99), 2) for _ in range(count)]
     avg_threat_index = round(sum(threat_indices) / count, 2)
     
-    # キルチェーンのステップ構造を構築
     kill_chain_steps = [
         {
             "step": i + 1,
@@ -93,18 +110,13 @@ def simulate_threat(req: SecuritySimRequest):
         }
         for i, t in enumerate(chosen_threats)
     ]
-    
-    response_text = (
-        f"【高度脅威シミュレーション作動 / 標的システム: {target}】\n\n"
-        f"ATT&CKフレームワークおよび異分野システムを融合した複合キルチェーンを生成しました。\n"
-        f"算出された異端攻撃度（Wildcard Threat Index）: {avg_threat_index}"
-    )
 
     return {
-        "mode": "mitre_linked_threat_simulation",
+        "mode": "quantum_enhanced_threat_simulation",
+        "system_status": SYSTEM_STATE["current_mode"],
         "target_system": target,
         "cross_count": count,
         "wildcard_threat_index": avg_threat_index,
         "kill_chain_steps": kill_chain_steps,
-        "simulation_report": response_text
+        "simulation_report": f"【高度脅威シミュレーション作動中 / 標的: {target}】"
     }
